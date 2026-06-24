@@ -14,17 +14,25 @@
   
   <!-- Babel for parsing JSX -->
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <script>
+    // Explicitly configure Babel to use the "classic" runtime to avoid browser import errors
+    Babel.registerPreset('react-classic', {
+      presets: [
+        [Babel.availablePresets.react, { "runtime": "classic" }]
+      ]
+    });
+  </script>
   
   <!-- Lucide Icons -->
   <script src="https://unpkg.com/lucide@latest"></script>
   
-  <!-- Firebase SDKs (using version 10 via CDN) -->
+  <!-- Firebase SDKs -->
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-app.js";
     import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-auth.js";
     import { getFirestore, doc, setDoc, collection, onSnapshot, deleteDoc } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
     
-    // Export to global scope for React component
+    // Export to global scope so the React component can access them
     window.firebase = {
       initializeApp, getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken,
       getFirestore, doc, setDoc, collection, onSnapshot, deleteDoc
@@ -32,7 +40,7 @@
   </script>
 
   <style>
-    /* Custom scrollbar and animations to mimic the original app's feel */
+    /* Custom scrollbar and animations */
     ::-webkit-scrollbar { width: 6px; }
     ::-webkit-scrollbar-track { background: transparent; }
     ::-webkit-scrollbar-thumb { background-color: #cbd5e1; border-radius: 10px; }
@@ -50,11 +58,10 @@
   
   <div id="root"></div>
 
-  <script type="text/babel" data-type="module">
+  <script type="text/babel" data-presets="react-classic">
     const { useState, useEffect, useRef } = React;
 
     // --- ICON HELPER COMPONENT ---
-    // A simple wrapper to use Lucide icons dynamically since we can't import React components directly
     const Icon = ({ name, size = 24, className = '', color = 'currentColor' }) => {
       const iconRef = useRef(null);
       useEffect(() => {
@@ -68,24 +75,40 @@
           if(iconNode && iconNode[0]) {
             iconRef.current.appendChild(iconNode[0]);
           } else {
-             // Fallback minimal SVG rendering if createIcons fails
-             iconRef.current.innerHTML = `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="${color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="${className} lucide lucide-${name}"></svg>`;
+             const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+             svg.setAttribute("width", size);
+             svg.setAttribute("height", size);
+             svg.setAttribute("viewBox", "0 0 24 24");
+             svg.setAttribute("fill", "none");
+             svg.setAttribute("stroke", color);
+             svg.setAttribute("stroke-width", "2");
+             svg.setAttribute("class", className);
+             
+             // Defensive check for icon definition to prevent mapping errors
              if(window.lucide.icons[name] && window.lucide.icons[name][2]) {
-                 const paths = window.lucide.icons[name][2].map(p => {
-                     let attrs = Object.entries(p[1]).map(([k, v]) => `${k}="${v}"`).join(' ');
-                     return `<${p[0]} ${attrs}></${p[0]}>`;
-                 }).join('');
-                 iconRef.current.firstChild.innerHTML = paths;
+                 const paths = window.lucide.icons[name][2];
+                 paths.forEach(p => {
+                     const path = document.createElementNS("http://www.w3.org/2000/svg", p[0]);
+                     if (p[1] && typeof p[1] === 'object') {
+                       Object.entries(p[1]).forEach(([k, v]) => path.setAttribute(k, v));
+                     }
+                     svg.appendChild(path);
+                 });
              }
+             iconRef.current.appendChild(svg);
           }
         }
       }, [name, size, className, color]);
       return <span ref={iconRef} className="inline-flex items-center justify-center" />;
     };
 
-    // --- GLOBAL VARIABLES (ENVIRONMENT PROVIDED) ---
-    // We wrap this in a setTimeout to ensure the Firebase module script has loaded
-    setTimeout(() => {
+    // --- GLOBAL VARIABLES & APP INIT ---
+    const startApp = () => {
+      if (!window.firebase) {
+        setTimeout(startApp, 50); // Keep checking every 50ms until Firebase is fully loaded
+        return;
+      }
+
       // Paste your keys from Firebase here:
       const firebaseConfig = {
         apiKey: "AIzaSyBodBadJ85WxphBq-8GmT-zwKzo0b3HRls",
@@ -99,14 +122,12 @@
       const appId = 'hansoll-bd3-cloud';
 
       let app, auth, db;
-      if (firebaseConfig && window.firebase) {
-        try {
-          app = window.firebase.initializeApp(firebaseConfig);
-          auth = window.firebase.getAuth(app);
-          db = window.firebase.getFirestore(app);
-        } catch (err) {
-          console.error("Firebase Initialization Error:", err);
-        }
+      try {
+        app = window.firebase.initializeApp(firebaseConfig);
+        auth = window.firebase.getAuth(app);
+        db = window.firebase.getFirestore(app);
+      } catch (err) {
+        console.error("Firebase Initialization Error:", err);
       }
 
       // --- INITIAL DATA UPDATED FOR BD3 ---
@@ -366,7 +387,6 @@
             <main className="flex-1 h-full overflow-y-auto p-4 md:p-8 lg:p-12">
               <div className="max-w-7xl mx-auto pb-20">
                 
-                {}
                 {activeTab === 'home' && (
                   <div className="space-y-8 max-w-4xl mx-auto">
                     <div className="bg-gradient-to-br from-slate-900 via-slate-800 to-indigo-950 text-white p-8 md:p-12 rounded-3xl shadow-2xl relative overflow-hidden">
@@ -381,10 +401,9 @@
                       <div className="absolute -right-10 -bottom-10 w-64 h-64 bg-indigo-500/10 rounded-full blur-3xl"></div>
                     </div>
 
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                       {[
                         { title: 'Decision Aid', desc: 'Provides logic for capacity and capital allocation.', icon: 'Target', color: 'text-indigo-400' },
-                        { title: 'The Future Makers', desc: 'Leading the charge in new business development and account expansion.', icon: 'TrendingUp', color: 'text-emerald-400' },
                         { title: 'Knowledge Utility', desc: 'Putting skill sets to use to make others better off.', icon: 'ShieldCheck', color: 'text-indigo-300' },
                       ].map((item, i) => (
                         <div key={i} className="p-6 bg-white border border-slate-200 rounded-2xl shadow-sm">
@@ -526,7 +545,6 @@
                   </div>
                 )}
 
-                {}
                 {activeTab === 'customers' && (
                   <div className="space-y-6">
                     <div className="flex justify-between items-center">
@@ -603,7 +621,6 @@
                   </div>
                 )}
 
-                {}
                 {activeTab === 'config' && (
                   <div className="space-y-8">
                     <div className="flex justify-between items-center">
@@ -655,7 +672,9 @@
 
       const root = ReactDOM.createRoot(document.getElementById('root'));
       root.render(<App />);
-    }, 100); // Small delay to ensure scripts are loaded
+    }; // End of startApp wrapper
+
+    startApp(); // Trigger the safe app load
   </script>
 </body>
 </html>
