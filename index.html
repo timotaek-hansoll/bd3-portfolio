@@ -86,8 +86,17 @@
     // --- GLOBAL VARIABLES (ENVIRONMENT PROVIDED) ---
     // We wrap this in a setTimeout to ensure the Firebase module script has loaded
     setTimeout(() => {
-      const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : null;
-      const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-bd3-app-id';
+      // Paste your keys from Firebase here:
+      const firebaseConfig = {
+        apiKey: "YOUR_API_KEY",
+        authDomain: "YOUR_PROJECT_ID.firebaseapp.com",
+        projectId: "YOUR_PROJECT_ID",
+        storageBucket: "YOUR_PROJECT_ID.appspot.com",
+        messagingSenderId: "YOUR_SENDER_ID",
+        appId: "YOUR_APP_ID"
+      };
+      
+      const appId = 'hansoll-bd3-cloud';
 
       let app, auth, db;
       if (firebaseConfig && window.firebase) {
