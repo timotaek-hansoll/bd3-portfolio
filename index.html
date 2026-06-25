@@ -66,37 +66,23 @@
       const iconRef = useRef(null);
       useEffect(() => {
         if (iconRef.current && window.lucide) {
-          iconRef.current.innerHTML = '';
-          const iconNode = window.lucide.createIcons({
-            icons: { [name]: window.lucide.icons[name] },
-            nameAttr: 'data-lucide',
-            attrs: { width: size, height: size, class: className, stroke: color, 'stroke-width': 2 }
+          // Map older icon names to updated Lucide v0.300+ names
+          const nameMap = {
+            'CheckCircle2': 'CircleCheck',
+            'Edit2': 'Pencil',
+            'UserCircle': 'CircleUser',
+            'BarChart3': 'ChartColumn'
+          };
+          const actualName = nameMap[name] || name;
+          
+          // Convert PascalCase to kebab-case (e.g. CircleCheck -> circle-check)
+          const kebabName = actualName.replace(/([a-z0-9])([A-Z])/g, '$1-$2').toLowerCase();
+          
+          iconRef.current.innerHTML = `<i data-lucide="${kebabName}" class="${className}"></i>`;
+          window.lucide.createIcons({
+            root: iconRef.current,
+            attrs: { width: size, height: size, stroke: color, 'stroke-width': 2 }
           });
-          if(iconNode && iconNode[0]) {
-            iconRef.current.appendChild(iconNode[0]);
-          } else {
-             const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-             svg.setAttribute("width", size);
-             svg.setAttribute("height", size);
-             svg.setAttribute("viewBox", "0 0 24 24");
-             svg.setAttribute("fill", "none");
-             svg.setAttribute("stroke", color);
-             svg.setAttribute("stroke-width", "2");
-             svg.setAttribute("class", className);
-             
-             // Defensive check for icon definition to prevent mapping errors
-             if(window.lucide.icons[name] && window.lucide.icons[name][2]) {
-                 const paths = window.lucide.icons[name][2];
-                 paths.forEach(p => {
-                     const path = document.createElementNS("http://www.w3.org/2000/svg", p[0]);
-                     if (p[1] && typeof p[1] === 'object') {
-                       Object.entries(p[1]).forEach(([k, v]) => path.setAttribute(k, v));
-                     }
-                     svg.appendChild(path);
-                 });
-             }
-             iconRef.current.appendChild(svg);
-          }
         }
       }, [name, size, className, color]);
       return <span ref={iconRef} className="inline-flex items-center justify-center" />;
@@ -284,10 +270,25 @@
           reader.onload = (e) => {
             try {
               const importedData = JSON.parse(e.target.result);
+              let simsToAdd = [];
               if (Array.isArray(importedData)) {
-                setSavedSimulations(prev => [...importedData, ...prev]); showToast(`Imported ${importedData.length} BD3 scenarios`);
+                simsToAdd = importedData;
+              } else if (importedData && importedData.data && importedData.data.customers) {
+                simsToAdd = [importedData];
               }
-            } catch (err) { showToast("Invalid JSON format", "error"); }
+              
+              const validSims = simsToAdd.filter(sim => sim.data && Array.isArray(sim.data.customers)).map(sim => ({
+                ...sim,
+                id: Date.now().toString() + '-' + Math.random().toString(36).substring(2, 7) // Ensure unique IDs
+              }));
+
+              if (validSims.length > 0) {
+                setSavedSimulations(prev => [...validSims, ...prev]); 
+                showToast(`Imported ${validSims.length} BD3 scenarios`);
+              } else {
+                showToast("No valid scenarios found in file", "error");
+              }
+            } catch (err) { showToast("Invalid JSON format. File may be corrupted.", "error"); }
           };
           reader.readAsText(file);
           event.target.value = '';
@@ -429,8 +430,16 @@
                           <input type="file" ref={fileInputRef} onChange={handleFileImport} accept=".json" className="hidden" />
                           <button onClick={handleImportClick} className="flex items-center gap-2 px-4 py-2 bg-slate-100 hover:bg-slate-200 rounded-lg text-sm font-bold transition"><Icon name="Upload" size={16}/> Import File</button>
                           <button onClick={() => {
-                            const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify([...cloudSimulations, ...savedSimulations], null, 2));
-                            const dlNode = document.createElement('a'); dlNode.setAttribute("href", dataStr); dlNode.setAttribute("download", "bd3_simulations.json"); dlNode.click();
+                            const dataToExport = [...cloudSimulations, ...savedSimulations];
+                            const blob = new Blob([JSON.stringify(dataToExport, null, 2)], { type: 'application/json' });
+                            const url = URL.createObjectURL(blob);
+                            const dlNode = document.createElement('a'); 
+                            dlNode.setAttribute("href", url); 
+                            dlNode.setAttribute("download", `BD3_Simulations_${new Date().toISOString().split('T')[0]}.json`); 
+                            document.body.appendChild(dlNode);
+                            dlNode.click();
+                            document.body.removeChild(dlNode);
+                            URL.revokeObjectURL(url);
                           }} className="flex items-center gap-2 px-4 py-2 bg-slate-100 hover:bg-slate-200 rounded-lg text-sm font-bold transition"><Icon name="Download" size={16}/> Export File</button>
                         </div>
                       </div>
