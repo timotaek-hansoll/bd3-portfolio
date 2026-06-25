@@ -147,6 +147,9 @@
         const [editingId, setEditingId] = useState(null);
         const [showCheatSheet, setShowCheatSheet] = useState(false);
         
+        // Track the current user's name
+        const [userName, setUserName] = useState(() => localStorage.getItem('hansoll_bd3_username') || 'Tim Lee');
+        
         const [savedSimulations, setSavedSimulations] = useState([]);
         const [cloudSimulations, setCloudSimulations] = useState([]);
         const [currentSimName, setCurrentSimName] = useState('BD3 Q1 Baseline');
@@ -160,6 +163,11 @@
           setToast({ message, type });
           setTimeout(() => setToast(null), 3500);
         };
+
+        // Save username to local storage when changed
+        useEffect(() => {
+          localStorage.setItem('hansoll_bd3_username', userName);
+        }, [userName]);
 
         useEffect(() => {
           if (!auth) { setAuthLoading(false); return; }
@@ -225,7 +233,16 @@
 
         const handleSaveSimulation = async (saveToCloud = false) => {
           const simId = Date.now().toString();
-          const newSim = { id: simId, name: currentSimName || `BD3 Sim ${new Date().toLocaleTimeString()}`, timestamp: new Date().toLocaleString(), data: { customers, yCriteria, xCriteria }, creator: user?.uid || 'Local Backup' };
+          
+          // Include both UID (for strict logic) and User Name (for display)
+          const newSim = { 
+            id: simId, 
+            name: currentSimName || `BD3 Sim ${new Date().toLocaleTimeString()}`, 
+            timestamp: new Date().toLocaleString(), 
+            data: { customers, yCriteria, xCriteria }, 
+            creatorId: user?.uid || 'local',
+            creatorName: userName || 'Anonymous User'
+          };
 
           if (saveToCloud) {
             if (!db || !user) {
@@ -298,6 +315,11 @@
         const handleRevenueChange = (id, value) => {
           setCustomers(customers.map(c => c.id === id ? { ...c, revenue: value === '' ? '' : Number(value) } : c));
         };
+
+        // Deriving initials safely for the avatar bubble
+        const userInitials = userName 
+          ? userName.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase() 
+          : 'U';
 
         const CheatSheet = () => (
           <div className={`fixed inset-y-0 right-0 w-full sm:w-[500px] bg-white shadow-2xl z-[1000] transform transition-transform duration-300 ease-in-out flex flex-col ${showCheatSheet ? 'translate-x-0' : 'translate-x-full'}`}>
@@ -376,11 +398,20 @@
                 </div>
               </div>
 
-              <div className="p-4 md:p-6 border-t border-slate-800 flex items-center gap-3">
-                <div className="w-8 h-8 rounded-full bg-indigo-600/30 text-indigo-400 font-black flex items-center justify-center flex-shrink-0 text-xs">TL</div>
-                <div className="hidden md:block overflow-hidden">
-                  <div className="text-xs text-slate-100 font-bold truncate">Tim Lee</div>
-                  <div className="text-[10px] text-slate-500 uppercase truncate">VP / Head of BD3</div>
+              <div className="p-4 md:p-6 border-t border-slate-800 flex items-center gap-3 group">
+                <div className="w-8 h-8 rounded-full bg-indigo-600/30 text-indigo-400 font-black flex items-center justify-center flex-shrink-0 text-xs shadow-inner">
+                  {userInitials}
+                </div>
+                <div className="hidden md:flex flex-col overflow-hidden flex-1">
+                  <input 
+                    type="text" 
+                    value={userName} 
+                    onChange={e => setUserName(e.target.value)} 
+                    placeholder="Enter Name..."
+                    className="bg-transparent text-xs text-slate-100 font-bold truncate w-full outline-none border-b border-transparent focus:border-indigo-500 hover:border-slate-600 transition-colors py-0.5"
+                    title="Edit your display name"
+                  />
+                  <div className="text-[10px] text-slate-500 uppercase truncate">BD3 Team Member</div>
                 </div>
               </div>
             </nav>
@@ -417,7 +448,6 @@
                   </div>
                 )}
 
-                {}
                 {activeTab === 'matrix' && (
                   <div className="space-y-6">
                     <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm mb-8">
@@ -455,18 +485,23 @@
                         <div>
                           <h4 className="text-xs font-bold text-indigo-600 uppercase tracking-wider mb-3">Cloud Shared Scenarios</h4>
                           <div className="space-y-2 max-h-48 overflow-y-auto pr-2">
-                            {cloudSimulations.map(sim => (
-                              <div key={sim.id} className="p-3 bg-indigo-50/50 border border-indigo-100 rounded-xl flex items-center justify-between group hover:border-indigo-300">
-                                <div className="overflow-hidden">
-                                  <div className="text-xs font-bold text-slate-800 truncate">{sim.name}</div>
-                                  <div className="text-[10px] text-slate-400">ID: {sim.id} • Creator: {sim.creator === user?.uid ? 'You' : 'Team Shared'}</div>
+                            {cloudSimulations.map(sim => {
+                              const isMe = sim.creatorId ? sim.creatorId === user?.uid : sim.creator === user?.uid;
+                              const displayCreator = isMe ? 'You' : (sim.creatorName || 'Team Shared');
+                              
+                              return (
+                                <div key={sim.id} className="p-3 bg-indigo-50/50 border border-indigo-100 rounded-xl flex items-center justify-between group hover:border-indigo-300">
+                                  <div className="overflow-hidden">
+                                    <div className="text-xs font-bold text-slate-800 truncate">{sim.name}</div>
+                                    <div className="text-[10px] text-slate-400">ID: {sim.id.substring(0,6)}... • Creator: <span className="font-semibold text-slate-500">{displayCreator}</span></div>
+                                  </div>
+                                  <div className="flex gap-1">
+                                    <button onClick={() => loadSimulation(sim)} className="p-1.5 hover:bg-indigo-100 text-indigo-600 rounded"><Icon name="Copy" size={14}/></button>
+                                    <button onClick={() => deleteSimulation(sim.id, true)} className="p-1.5 hover:bg-rose-100 text-rose-600 rounded"><Icon name="Trash2" size={14}/></button>
+                                  </div>
                                 </div>
-                                <div className="flex gap-1">
-                                  <button onClick={() => loadSimulation(sim)} className="p-1.5 hover:bg-indigo-100 text-indigo-600 rounded"><Icon name="Copy" size={14}/></button>
-                                  <button onClick={() => deleteSimulation(sim.id, true)} className="p-1.5 hover:bg-rose-100 text-rose-600 rounded"><Icon name="Trash2" size={14}/></button>
-                                </div>
-                              </div>
-                            ))}
+                              );
+                            })}
                             {cloudSimulations.length === 0 && <div className="text-center py-6 text-xs text-slate-400 border border-dashed rounded-xl">No scenarios found in Shared Cloud.</div>}
                           </div>
                         </div>
